@@ -1,0 +1,1 @@
+name=adbd lib/lib${moduleId}.so
