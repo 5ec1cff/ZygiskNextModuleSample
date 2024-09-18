@@ -38,19 +38,24 @@ static int my_execle_plt(const char *pathname, char *arg, ...) {
     return execve(pathname, args.data(), envp);
 }
 
-// backup of old open function
-static int (*old_open)(const char *pathname, int flags, mode_t mode) = nullptr;
-// our replacement for open function
-static int my_open(const char *pathname, int flags, mode_t mode) {
-    auto fd = old_open(pathname, flags, mode);
+// backup of old __openat function
+static int (*old_openat)(int fd, const char* pathname, int flag, int mode) = nullptr;
+// our replacement for __openat function
+static int my_openat(int fd, const char* pathname, int flag, int mode) {
+    static thread_local int depth = 0;
+    auto r = old_openat(fd, pathname, flag, mode);
     int e = errno;
-    LOGI("open %s = %d", pathname, fd);
+    depth++;
+    if (depth == 1) {
+        LOGI("openat %d %s = %d", fd, pathname, r);
+    }
+    depth--;
     errno = e;
-    return fd;
+    return r;
 }
 
 // this function will be called after all of the main executable's needed libraries are loaded
-// and before the entry of the main executable called
+// and before the entry of the main executable is called
 void onModuleLoaded(void* self_handle, const struct ZygiskNextAPI* api) {
     // You need to copy the api table if you want to use it after this callback finished
     memcpy(&api_table, api, sizeof(struct ZygiskNextAPI));
@@ -77,11 +82,30 @@ void onModuleLoaded(void* self_handle, const struct ZygiskNextAPI* api) {
         LOGI("plt hook failed");
     }
 
-    // inline hook adbd's open function
-    auto fun = dlsym(RTLD_NEXT, "open");
-    LOGI("open addr %p", fun);
-    if (api_table.inlineHook(fun, (void *) my_open, (void**) &old_open) == ZN_SUCCESS) {
-        LOGI("inline hook success %p", old_open);
+    // inline hook libc's __open function
+    auto resolver = api_table.newSymbolResolver("libc.so", nullptr);
+    if (!resolver) {
+        LOGI("create resolver failed");
+        return;
+    }
+
+    LOGI("libc base %p", api_table.getBaseAddress(resolver));
+
+    size_t sz;
+
+    auto addr = api_table.symbolLookup(resolver, "__openat", false, &sz);
+
+    api_table.freeSymbolResolver(resolver);
+
+    if (addr == nullptr) {
+        LOGI("failed to find __openat");
+        return;
+    }
+
+    LOGI("__openat addr %p sz=%zu", addr, sz);
+
+    if (api_table.inlineHook(addr, (void *) my_openat, (void**) &old_openat) == ZN_SUCCESS) {
+        LOGI("inline hook success");
     } else {
         LOGI("inline hook failed");
     }
