@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-#define ZYGISK_NEXT_API_VERSION_1 2
+#define ZYGISK_NEXT_API_VERSION_1 3
 
 #define ZN_SUCCESS 0
 #define ZN_FAILED 1
@@ -21,7 +21,7 @@ struct ZygiskNextAPI {
     // its original value will be put to the address specified by `origianl` (can be null).
     // You can use this api to do caller-oriented hook
     // If you want to unhook, please call this function with hook_handler = original
-    // If hooking succeed, returns ZN_SUCCESS, otherwise ZN_FAILED
+    // If hook succeed, returns ZN_SUCCESS, otherwise ZN_FAILED
     int (*pltHook)(void* base_addr, const char* symbol, void* hook_handler, void** original);
 
     // Do inline hook at the address specified by `target`, replace it with a new function specified
@@ -33,7 +33,7 @@ struct ZygiskNextAPI {
     int (*inlineHook)(void* target, void* addr, void** original);
 
     // Unhook the address which is formerly hooked.
-    // If hooking succeed, returns ZN_SUCCESS, otherwise ZN_FAILED
+    // If hook succeed, returns ZN_SUCCESS, otherwise ZN_FAILED
     int (*inlineUnhook)(void* target);
 
     // Symbol Resolver API
@@ -63,8 +63,17 @@ struct ZygiskNextAPI {
     void (*forEachSymbols)(struct ZnSymbolResolver* resolver,
                            bool (*callback)(const char* name, void* addr, size_t size, void* data),
                            void* data);
+
+    // Companion API
+
+    // Create a unix sock stream connection to your declared companion process.
+    // The value of `handle` is the `self_handle` which you've received from onModuleLoaded.
+    // On success, it returns the file descriptor refer to the socket, otherwise -1 is returned.
+    // Please close this file descriptor by yourself.
+    int (*connectCompanion)(void* handle);
 };
 
+// Callbacks of an injected library
 struct ZygiskNextModule {
     // Please fill this with the target version of your module, e.g. ZYGISK_NEXT_API_VERSION_1
     int target_api_version;
@@ -74,8 +83,22 @@ struct ZygiskNextModule {
     void (*onModuleLoaded)(void* self_handle, const struct ZygiskNextAPI* api);
 };
 
+// Callbacks of a companion library
+struct ZygiskNextCompanionModule {
+    int target_api_version;
+
+    void (*onCompanionLoaded)();
+
+    // This callback will be called when your Zygisk Next module is trying to establish a connection
+    // with your companion module, i.e. `connectCompanion` is called.
+    // The `fd` param will be a unix sock stream file descriptor.
+    // Please close this file descriptor after use by yourself.
+    void (*onModuleConnected)(int fd);
+};
+
 // Please define your `zn_module` in your source file.
 extern __attribute__((visibility("default"), unused)) struct ZygiskNextModule zn_module;
+extern __attribute__((visibility("default"), unused)) struct ZygiskNextCompanionModule zn_companion_module;
 
 #ifdef __cplusplus
 }

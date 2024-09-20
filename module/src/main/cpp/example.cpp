@@ -18,6 +18,7 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "ZnModuleTemplate", __VA_ARGS__)
 
 static ZygiskNextAPI api_table;
+void* handle;
 
 // print the arguments of programs that the adbd exec-ed
 static int my_execle_plt(const char *pathname, char *arg, ...) {
@@ -42,14 +43,14 @@ static int my_execle_plt(const char *pathname, char *arg, ...) {
 static int (*old_openat)(int fd, const char* pathname, int flag, int mode) = nullptr;
 // our replacement for __openat function
 static int my_openat(int fd, const char* pathname, int flag, int mode) {
-    static thread_local int depth = 0;
     auto r = old_openat(fd, pathname, flag, mode);
     int e = errno;
-    depth++;
-    if (depth == 1) {
-        LOGI("openat %d %s = %d", fd, pathname, r);
-    }
-    depth--;
+
+    auto cp_fd = api_table.connectCompanion(handle);
+    int sz = strlen(pathname);
+    TEMP_FAILURE_RETRY(write(cp_fd, &sz, sizeof(sz)));
+    TEMP_FAILURE_RETRY(write(cp_fd, pathname, sz));
+
     errno = e;
     return r;
 }
@@ -60,6 +61,7 @@ void onModuleLoaded(void* self_handle, const struct ZygiskNextAPI* api) {
     // You need to copy the api table if you want to use it after this callback finished
     memcpy(&api_table, api, sizeof(struct ZygiskNextAPI));
     LOGI("module loaded");
+    handle = self_handle;
 
     // get base address of adbd
     void* base = nullptr;
@@ -117,4 +119,26 @@ struct ZygiskNextModule zn_module = {
         .target_api_version = ZYGISK_NEXT_API_VERSION_1,
         .onModuleLoaded = onModuleLoaded
 };
+
+static void onCompanionLoaded() {
+    LOGI("companion loaded");
+}
+
+static void onModuleConnected(int fd) {
+    int sz;
+    TEMP_FAILURE_RETRY(read(fd, &sz, sizeof(sz)));
+    if (sz > 1024 || sz < 0) return;
+    char buf[sz + 1];
+    TEMP_FAILURE_RETRY(read(fd, &buf, sz));
+    buf[sz] = 0;
+    LOGI("remote opened: %s", buf);
+}
+
+__attribute__((visibility("default"), unused))
+struct ZygiskNextCompanionModule zn_companion_module = {
+        .target_api_version = ZYGISK_NEXT_API_VERSION_1,
+        .onCompanionLoaded = onCompanionLoaded,
+        .onModuleConnected = onModuleConnected,
+};
+
 
