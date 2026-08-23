@@ -63,7 +63,7 @@ path=/apex/com.android.adbd/bin/adbd libmodule.so
 
 ### 模块 API （草案）
 
-Zygisk Next 模块 API 目前仍在设计当中，具体内容请参见 [zygisk_next_api.h](module/src/main/cpp/zygisk_next_api.h) 。
+Zygisk Next 模块 API 目前仍在设计当中，具体内容请参见 [zygisk_next_api.h](native/zygisk_next_api.h) 。
 
 当前 API 版本为 1 ，提供 plt hook 和 inline hook 能力。
 
@@ -129,7 +129,7 @@ You can use the command `zygisk-ctl dump-zn -sa` to observe the service processe
 
 ### Module API (Draft)
 
-The Zygisk Next module API is still under design. For specific details, please refer to [zygisk_next_api.h](module/src/main/cpp/zygisk_next_api.h).
+The Zygisk Next module API is still under design. For specific details, please refer to [zygisk_next_api.h](native/zygisk_next_api.h).
 
 The current API version is 1, providing the ability for PLT hook and inline hook.
 
